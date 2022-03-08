@@ -1,0 +1,21 @@
+diff --git a/src/modules/src/estimator_kalman.c b/src/modules/src/estimator_kalman.c
+index f47a6696..98c3d831 100644
+--- a/src/modules/src/estimator_kalman.c
++++ b/src/modules/src/estimator_kalman.c
+@@ -204,7 +204,7 @@ static void kalmanTask(void* parameters) {
+   rateSupervisorInit(&rateSupervisorContext, xTaskGetTickCount(), M2T(1000), 99, 101, 1);
+ 
+   while (true) {
+-    xSemaphoreTake(runTaskSemaphore, portMAX_DELAY);
++    vTaskDelay(1);
+ 
+     // If the client triggers an estimator reset via parameter update
+     if (coreData.resetEstimation) {
+@@ -297,7 +297,6 @@ void estimatorKalman(state_t *state, const uint32_t tick)
+   memcpy(state, &taskEstimatorState, sizeof(state_t));
+   xSemaphoreGive(dataMutex);
+ 
+-  xSemaphoreGive(runTaskSemaphore);
+ }
+ 
+ static bool predictStateForward(uint32_t osTick, float dt) {

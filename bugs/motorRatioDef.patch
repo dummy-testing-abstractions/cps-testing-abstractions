@@ -1,0 +1,43 @@
+diff --git a/src/drivers/interface/motors.h b/src/drivers/interface/motors.h
+index a62d121b..70820c5a 100644
+--- a/src/drivers/interface/motors.h
++++ b/src/drivers/interface/motors.h
+@@ -255,7 +255,7 @@ void motorsSetRatio(uint32_t id, uint16_t ratio);
+ /**
+  * Get the PWM ratio of the motor 'id'. Return -1 if wrong ID.
+  */
+-int motorsGetRatio(uint32_t id);
++float motorsGetRatio(uint32_t id);
+ 
+ /**
+  * FreeRTOS Task to test the Motors driver
+diff --git a/src/drivers/src/motors.c b/src/drivers/src/motors.c
+index b425bb4f..4659999e 100644
+--- a/src/drivers/src/motors.c
++++ b/src/drivers/src/motors.c
+@@ -309,14 +309,14 @@ void motorsSetRatio(uint32_t id, uint16_t ithrust)
+   }
+ }
+ 
+-int motorsGetRatio(uint32_t id)
++float motorsGetRatio(uint32_t id)
+ {
+   int ratio;
+ 
+   ASSERT(id < NBR_OF_MOTORS);
+ 
+ #if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
+-    return motor_ratios[id];
++    return motor_ratios[id]/65536.0f;
+ #endif /* HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP */
+ 
+   if (motorMap[id]->drvType == BRUSHLESS)
+@@ -328,7 +328,7 @@ int motorsGetRatio(uint32_t id)
+     ratio = motorsConvBitsTo16(motorMap[id]->getCompare(motorMap[id]->tim));
+   }
+ 
+-  return ratio;
++  return ratio/65536.0f;
+ }
+ 
+ void motorsBeep(int id, bool enable, uint16_t frequency, uint16_t ratio)

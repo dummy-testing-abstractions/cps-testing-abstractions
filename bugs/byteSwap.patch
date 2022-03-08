@@ -1,0 +1,25 @@
+diff --git a/src/drivers/bosch/src/bmi088_accel.c b/src/drivers/bosch/src/bmi088_accel.c
+index 1d545c95..61c94e0a 100644
+--- a/src/drivers/bosch/src/bmi088_accel.c
++++ b/src/drivers/bosch/src/bmi088_accel.c
+@@ -665,17 +665,17 @@ uint16_t bmi088_get_accel_data(struct bmi088_sensor_data *accel,
+         {
+             lsb = (uint32_t)data[index++];
+             msb = (uint32_t)data[index++];
+-            msblsb = (msb << BMI088_EIGHT) | lsb;
++            msblsb = (lsb << BMI088_EIGHT) | msb;
+             accel->x = ((int16_t)msblsb); /* Data in X axis */
+ 
+             lsb = (uint32_t)data[index++];
+             msb = (uint32_t)data[index++];
+-            msblsb = (msb << BMI088_EIGHT) | lsb;
++            msblsb = (lsb << BMI088_EIGHT) | msb;
+             accel->y = ((int16_t)msblsb); /* Data in Y axis */
+ 
+             lsb = (uint32_t)data[index++];
+             msb = (uint32_t)data[index++];
+-            msblsb = (msb << BMI088_EIGHT) | lsb;
++            msblsb = (lsb << BMI088_EIGHT) | msb;
+             accel->z = ((int16_t)msblsb); /* Data in Z axis */
+         }
+     }

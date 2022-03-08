@@ -1,0 +1,31 @@
+diff --git a/src/deck/drivers/src/flowdeck_v1v2.c b/src/deck/drivers/src/flowdeck_v1v2.c
+index b44c1f66..e59d5fd5 100755
+--- a/src/deck/drivers/src/flowdeck_v1v2.c
++++ b/src/deck/drivers/src/flowdeck_v1v2.c
+@@ -88,9 +88,7 @@ static void flowdeckTask(void *param)
+ {
+   systemWaitStart();
+ 
+-#if !(defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP))
+   uint64_t lastTime  = usecTimestamp();
+-#endif // neither HARDWARE_IN_THE_LOOP nor SOFTWARE_IN_THE_LOOP
+ 
+   while(1) {
+     vTaskDelay(10);
+@@ -161,15 +159,11 @@ static void flowdeckTask(void *param)
+       //    and the PMW flow sensor indicates motion detection
+ #if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
+       if (!useFlowDisabled) {
+-        /* this is tecnically not correct since the task is not very
+-        regular (the timing is not properly implemented) but at least
+-        it guarantees consistency with the measurements */
+-        flowData.dt = 0.01;
+ #else // normal firmware
+       if (!useFlowDisabled && currentMotion.motion == 0xB0) {
++#endif // HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP
+         flowData.dt = (float)(usecTimestamp()-lastTime)/1000000.0f;
+         lastTime = usecTimestamp();
+-#endif // HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP
+         estimatorEnqueueFlow(&flowData);
+       }
+     } else {

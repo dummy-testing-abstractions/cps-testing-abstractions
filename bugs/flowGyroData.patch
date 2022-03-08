@@ -1,0 +1,20 @@
+diff --git a/src/modules/src/estimator_kalman.c b/src/modules/src/estimator_kalman.c
+index f47a6696..8499150e 100644
+--- a/src/modules/src/estimator_kalman.c
++++ b/src/modules/src/estimator_kalman.c
+@@ -380,6 +380,7 @@ static bool updateQueuedMeasurements(const uint32_t tick) {
+         doneUpdate = true;
+         break;
+       case MeasurementTypeFlow:
++        sensorsReadGyro(&gyroLatest);
+         kalmanCoreUpdateWithFlow(&coreData, &m.data.flow, &gyroLatest);
+         doneUpdate = true;
+         break;
+@@ -395,7 +396,6 @@ static bool updateQueuedMeasurements(const uint32_t tick) {
+         gyroAccumulator.x += m.data.gyroscope.gyro.x;
+         gyroAccumulator.y += m.data.gyroscope.gyro.y;
+         gyroAccumulator.z += m.data.gyroscope.gyro.z;
+-        gyroLatest = m.data.gyroscope.gyro;
+         gyroAccumulatorCount++;
+         break;
+       case MeasurementTypeAcceleration:

@@ -1,0 +1,731 @@
+diff --git a/Makefile b/Makefile
+index bfd3c137..e04c20ae 100644
+--- a/Makefile
++++ b/Makefile
+@@ -59,7 +59,7 @@ PORT = $(FREERTOS)/portable/GCC/ARM_CM4F
+ LINKER_DIR = $(CRAZYFLIE_BASE)/tools/make/F405/linker
+ ST_OBJ_DIR  = $(CRAZYFLIE_BASE)/tools/make/F405
+ 
+-OPENOCD_TARGET    ?= target/stm32f4x_stlink.cfg
++OPENOCD_TARGET    ?= target/stm32f4x.cfg
+ 
+ 
+ # St Lib
+diff --git a/examples/demos/app_steps/.gitignore b/examples/demos/app_steps/.gitignore
+new file mode 100644
+index 00000000..a743f37a
+--- /dev/null
++++ b/examples/demos/app_steps/.gitignore
+@@ -0,0 +1,2 @@
++bin/*
++cf2.*
+diff --git a/examples/demos/app_steps/Makefile b/examples/demos/app_steps/Makefile
+new file mode 100644
+index 00000000..02c80d3f
+--- /dev/null
++++ b/examples/demos/app_steps/Makefile
+@@ -0,0 +1,21 @@
++# enable app support
++APP=1
++APP_STACKSIZE=300
++
++VPATH += src/
++PROJ_OBJ += steps.o
++
++CRAZYFLIE_BASE=../../..
++
++include $(CRAZYFLIE_BASE)/Makefile
++
++sitl: export CFLAGS=-DSOFTWARE_IN_THE_LOOP
++sitl: | clean all
++
++hitl: export CFLAGS=-DHARDWARE_IN_THE_LOOP
++hitl: | clean all
++
++pitl: export CFLAGS=-DPROCESS_IN_THE_LOOP
++pitl: | clean all
++
++.PHONY: sitl hitl pitl
+diff --git a/examples/demos/app_steps/readme.md b/examples/demos/app_steps/readme.md
+new file mode 100644
+index 00000000..91e8c9d1
+--- /dev/null
++++ b/examples/demos/app_steps/readme.md
+@@ -0,0 +1,45 @@
++# steps app
++
++This directory contains the steps sequence for Cazyflie 2.x.
++It uses out-of-tree build functionality of the Crazyflie firmware and is implemented using the app entry-point. This is thought for a Crazyflie 2.x with Flow deck version 2.
++
++It has been implemented as an autonomous test flight for the paper on testing levels abstractions.
++
++In the app file (steps.c) the drone waits for the variable _start_ to be set to _true_. This is done by the main test files for synchronizing the drone with the testing environment. Once this variable is triggered it will perform the following sequence described in the following table. At each time in the left hand side column the setpoint on the right hand side column is issued.
++
++time | r-x | r-y | r-z |
++-----|-----|-----|------
++0.0  | 0.0 | 0.0 | 0.5 |
++2.0  | 0.2 | 0.0 | 0.5 |
++6.0  | 0.0 | 0.2 | 0.5 |
++
++## Build
++
++You must have the required tools to build the [Crazyflie firmware](https://github.com/bitcraze/crazyflie-firmware).
++
++Clone the repos with ```--recursive```. If you did not do so, pull submodules with:
++```
++git submodule update --init --recursive
++```
++
++The firmware needs to specific build macros for the SITL, HITL, and PITL testing (the latter just to log data with the SDcard deck). Those can be automatically included with the dedicated targets shown below. Detailed description of the changes that are triggered in the firmware can be found in the paper and in the _testing-levels_ repository.
++
++Build for SITL:
++```
++make sitl
++```
++
++Build for HITL:
++```
++make hitl
++```
++
++Build for PITL:
++```
++make pitl
++```
++
++Then bootload:
++```
++make cload
++```
+\ No newline at end of file
+diff --git a/examples/demos/app_steps/src/steps.c b/examples/demos/app_steps/src/steps.c
+new file mode 100644
+index 00000000..d4f60215
+--- /dev/null
++++ b/examples/demos/app_steps/src/steps.c
+@@ -0,0 +1,97 @@
++/* steps.c - App layer application for the steps sequence used in the
++ * testing levels paper. Has to have the multiranger and the flowdeck 
++ * version 2.
++ */
++
++#include <string.h>
++#include <stdint.h>
++#include <stdbool.h>
++
++#include "app.h"
++
++#include "commander.h"
++
++#include "FreeRTOS.h"
++#include "task.h"
++
++#include "debug.h"
++
++#include "log.h"
++#include "param.h"
++
++#include "estimator.h"
++
++#define HOVER_HEIGHT (0.5f)
++
++
++static void setHoverSetpoint(setpoint_t *setpoint, float x, float y, float z, float yawrate)
++{
++  setpoint->mode.x = modeAbs;
++  setpoint->mode.y = modeAbs;
++  setpoint->mode.z = modeAbs;
++  setpoint->position.x = x;
++  setpoint->position.y = y;
++  setpoint->position.z = z;
++
++  setpoint->mode.yaw = modeAbs;
++  setpoint->attitude.yaw = yawrate;
++
++}
++
++void appMain()
++{
++  static setpoint_t setpoint;
++  static StateEstimatorType estimator;
++#if defined(SOFTWARE_IN_THE_LOOP) || defined(HARDWARE_IN_THE_LOOP)
++  static int start __attribute__((used)) = 0;
++#else // not need to synch with testing script, fly!
++  static int start __attribute__((used)) = 1;
++#endif /*SOFTWARE_IN_THE_LOOP or HARDWARE_IN_THE_LOOP*/
++  static int ready __attribute__((used)) = 0;
++
++#if defined (PROCESS_IN_THE_LOOP)
++  paramSetInt(paramGetVarId("usd", "logging"), 1);
++  vTaskDelay(M2T(300));
++#endif
++
++  setHoverSetpoint(&setpoint, 0.0f, 0.0f, 0.0f, 0.0f);
++  commanderSetSetpoint(&setpoint, 3);
++  estimator = getStateEstimator();
++  vTaskDelay(M2T(1));
++
++  ready = 1;
++
++  while (!start) {
++    vTaskDelay(M2T(1)); // initial wait 50
++  }
++
++  //reset estimator for repeatibility
++  stateEstimatorInit(estimator);
++  vTaskDelay(M2T(10));
++
++  int i=0; // t = 0
++  while(i<200) {
++    vTaskDelay(M2T(10));
++    setHoverSetpoint(&setpoint, 0.0f, 0.0f, HOVER_HEIGHT, 0.0f);
++    commanderSetSetpoint(&setpoint, 3);
++    ++i;
++  }
++  i=0; // t = 2
++  while(i<400) {
++    vTaskDelay(M2T(10));
++    setHoverSetpoint(&setpoint, 0.2f, 0.0f, HOVER_HEIGHT, 0.0f);
++    commanderSetSetpoint(&setpoint, 3);
++    ++i;
++  }
++  i=0; // t = 6
++  while(i<400) {
++    vTaskDelay(M2T(10));
++    setHoverSetpoint(&setpoint, 0.0f, 0.2f, HOVER_HEIGHT, 0.0f);
++    commanderSetSetpoint(&setpoint, 3);
++    ++i;
++  }
++  // t = 10
++#if defined (PROCESS_IN_THE_LOOP)
++  paramSetInt(paramGetVarId("usd", "logging"), 0);
++#endif
++}
+diff --git a/src/config/config.h b/src/config/config.h
+index 1dad8b13..773c6419 100644
+--- a/src/config/config.h
++++ b/src/config/config.h
+@@ -240,6 +240,7 @@
+ //#define T_LAUCH_MOTORS
+ //#define T_LAUCH_MOTOR_TEST
+ //#define MOTOR_RAMPUP_TEST
++
+ /**
+  * \def ADC_OUTPUT_RAW_DATA
+  * When defined the gyro data will be written to the UART channel.
+diff --git a/src/deck/drivers/src/flowdeck_v1v2.c b/src/deck/drivers/src/flowdeck_v1v2.c
+index bee0c256..b44c1f66 100755
+--- a/src/deck/drivers/src/flowdeck_v1v2.c
++++ b/src/deck/drivers/src/flowdeck_v1v2.c
+@@ -66,7 +66,11 @@ static float stdFlow = 2.0f;
+ static bool isInit1 = false;
+ static bool isInit2 = false;
+ 
++#if defined(SOFTWARE_IN_THE_LOOP) || defined(HARDWARE_IN_THE_LOOP)
++static motionBurst_t currentMotion;
++#else // normal firmware
+ motionBurst_t currentMotion;
++#endif // SOFTWARE_IN_THE_LOOP && HARDWARE_IN_THE_LOOP
+ 
+ // Disables pushing the flow measurement in the EKF
+ static bool useFlowDisabled = false;
+@@ -80,16 +84,20 @@ static float flowStdFixed = 2.0f;
+ 
+ #define NCS_PIN DECK_GPIO_IO3
+ 
+-
+ static void flowdeckTask(void *param)
+ {
+   systemWaitStart();
+ 
++#if !(defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP))
+   uint64_t lastTime  = usecTimestamp();
++#endif // neither HARDWARE_IN_THE_LOOP nor SOFTWARE_IN_THE_LOOP
++
+   while(1) {
+     vTaskDelay(10);
+ 
++#if !(defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP))
+     pmw3901ReadMotion(NCS_PIN, &currentMotion);
++#endif // neither HARDWARE_IN_THE_LOOP nor SOFTWARE_IN_THE_LOOP
+ 
+     // Flip motion information to comply with sensor mounting
+     // (might need to be changed if mounted differently)
+@@ -148,11 +156,20 @@ static void flowdeckTask(void *param)
+       flowData.dpixelx = (float)accpx;
+       flowData.dpixely = (float)accpy;
+ #endif
++
+       // Push measurements into the estimator if flow is not disabled
+       //    and the PMW flow sensor indicates motion detection
++#if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
++      if (!useFlowDisabled) {
++        /* this is tecnically not correct since the task is not very
++        regular (the timing is not properly implemented) but at least
++        it guarantees consistency with the measurements */
++        flowData.dt = 0.01;
++#else // normal firmware
+       if (!useFlowDisabled && currentMotion.motion == 0xB0) {
+         flowData.dt = (float)(usecTimestamp()-lastTime)/1000000.0f;
+         lastTime = usecTimestamp();
++#endif // HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP
+         estimatorEnqueueFlow(&flowData);
+       }
+     } else {
+@@ -216,6 +233,7 @@ static void flowdeck2Init()
+   const DeckDriver *zRanger = deckFindDriverByName("bcZRanger2");
+   zRanger->init(NULL);
+ 
++#ifndef SOFTWARE_IN_THE_LOOP
+   if (pmw3901Init(NCS_PIN))
+   {
+     xTaskCreate(flowdeckTask, FLOW_TASK_NAME, FLOW_TASK_STACKSIZE, NULL,
+@@ -223,6 +241,12 @@ static void flowdeck2Init()
+ 
+     isInit2 = true;
+   }
++#else
++  xTaskCreate(flowdeckTask, FLOW_TASK_NAME, FLOW_TASK_STACKSIZE, NULL,
++              FLOW_TASK_PRI, NULL);
++
++  isInit2 = true;
++#endif // SOFTWARE_IN_THE_LOOP
+ }
+ 
+ static bool flowdeck2Test()
+diff --git a/src/deck/drivers/src/zranger2.c b/src/deck/drivers/src/zranger2.c
+index 57858bd2..e445f879 100644
+--- a/src/deck/drivers/src/zranger2.c
++++ b/src/deck/drivers/src/zranger2.c
+@@ -53,12 +53,17 @@ static float expCoeff;
+ 
+ #define RANGE_OUTLIER_LIMIT 5000 // the measured range is in [mm]
+ 
++#if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
++static uint16_t range_last __attribute__((used)) = 0;
++#else // normal firmware
+ static uint16_t range_last = 0;
++#endif // HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP
+ 
+ static bool isInit;
+ 
++#ifndef SOFTWARE_IN_THE_LOOP
+ NO_DMA_CCM_SAFE_ZERO_INIT static VL53L1_Dev_t dev;
+-
++#ifndef HARDWARE_IN_THE_LOOP
+ static uint16_t zRanger2GetMeasurementAndRestart(VL53L1_Dev_t *dev)
+ {
+     VL53L1_Error status = VL53L1_ERROR_NONE;
+@@ -81,12 +86,15 @@ static uint16_t zRanger2GetMeasurementAndRestart(VL53L1_Dev_t *dev)
+ 
+     return range;
+ }
++#endif //HARDWARE_IN_THE_LOOP
++#endif //SOFTWARE_IN_THE_LOOP
+ 
+ void zRanger2Init(DeckInfo* info)
+ {
+   if (isInit)
+     return;
+ 
++#ifndef SOFTWARE_IN_THE_LOOP
+   if (vl53l1xInit(&dev, I2C1_DEV))
+   {
+       DEBUG_PRINT("Z-down sensor [OK]\n");
+@@ -96,6 +104,7 @@ void zRanger2Init(DeckInfo* info)
+     DEBUG_PRINT("Z-down sensor [FAIL]\n");
+     return;
+   }
++#endif // SOFTWARE_IN_THE_LOOP
+ 
+   xTaskCreate(zRanger2Task, ZRANGER2_TASK_NAME, ZRANGER2_TASK_STACKSIZE, NULL, ZRANGER2_TASK_PRI, NULL);
+ 
+@@ -120,18 +129,22 @@ void zRanger2Task(void* arg)
+   systemWaitStart();
+ 
+   // Restart sensor
++#ifndef SOFTWARE_IN_THE_LOOP
+   VL53L1_StopMeasurement(&dev);
+   VL53L1_SetDistanceMode(&dev, VL53L1_DISTANCEMODE_MEDIUM);
+   VL53L1_SetMeasurementTimingBudgetMicroSeconds(&dev, 25000);
+ 
+   VL53L1_StartMeasurement(&dev);
++#endif //SOFTWARE_IN_THE_LOOP
+ 
+   lastWakeTime = xTaskGetTickCount();
+ 
+   while (1) {
+     vTaskDelayUntil(&lastWakeTime, M2T(25));
+ 
+-    range_last = zRanger2GetMeasurementAndRestart(&dev);
++#if !( defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP) ) // not used for hitl nor sitl testing
++    range_last = zRanger2GetMeasurementAndRestart(&dev); //if called in hitl testing the thread hangs
++#endif // neither HARDWARE_IN_THE_LOOP nor SOFTWARE_IN_THE_LOOP
+     rangeSet(rangeDown, range_last / 1000.0f);
+ 
+     // check if range is feasible and push into the estimator
+@@ -165,3 +178,7 @@ PARAM_GROUP_START(deck)
+ PARAM_ADD_CORE(PARAM_UINT8 | PARAM_RONLY, bcZRanger2, &isInit)
+ 
+ PARAM_GROUP_STOP(deck)
++
++LOG_GROUP_START(zranger)
++LOG_ADD(LOG_UINT16, zrange, &range_last)
++LOG_GROUP_STOP(zranger)
+diff --git a/src/drivers/src/motors.c b/src/drivers/src/motors.c
+index 24bccfb7..b425bb4f 100644
+--- a/src/drivers/src/motors.c
++++ b/src/drivers/src/motors.c
+@@ -283,6 +283,11 @@ void motorsSetRatio(uint32_t id, uint16_t ithrust)
+ 
+     ratio = ithrust;
+ 
++#if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
++    motor_ratios[id] = ratio;
++    return; //this return avoids actually powering the motors in sitl or hitl testing
++#endif /* HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP */
++
+ #ifdef ENABLE_THRUST_BAT_COMPENSATED
+     if (motorMap[id]->drvType == BRUSHED)
+     {
+@@ -309,6 +314,11 @@ int motorsGetRatio(uint32_t id)
+   int ratio;
+ 
+   ASSERT(id < NBR_OF_MOTORS);
++
++#if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
++    return motor_ratios[id];
++#endif /* HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP */
++
+   if (motorMap[id]->drvType == BRUSHLESS)
+   {
+     ratio = motorsBLConvBitsTo16(motorMap[id]->getCompare(motorMap[id]->tim));
+diff --git a/src/drivers/src/uart_syslink.c b/src/drivers/src/uart_syslink.c
+index fd5df3e3..e13c21ce 100644
+--- a/src/drivers/src/uart_syslink.c
++++ b/src/drivers/src/uart_syslink.c
+@@ -367,7 +367,11 @@ void uartslkHandleDataFromISR(uint8_t c, BaseType_t * const pxHigherPriorityTask
+     else
+     {
+       rxState = waitForFirstStart; //Checksum error
++/* during HitL communication with nrf will be disturbed by breakpoints
++so the following assert will restart the system */
++#ifndef HARDWARE_IN_THE_LOOP
+       ASSERT(0);
++#endif //HARDWARE_IN_THE_LOOP
+     }
+     break;
+   case waitForChksum2:
+@@ -386,7 +390,11 @@ void uartslkHandleDataFromISR(uint8_t c, BaseType_t * const pxHigherPriorityTask
+     else
+     {
+       rxState = waitForFirstStart; //Checksum error
++/* during HitL communication with nrf will be disturbed by breakpoints
++so the following assert will restart the system */
++#ifndef HARDWARE_IN_THE_LOOP
+       ASSERT(0);
++#endif //HARDWARE_IN_THE_LOOP
+     }
+     rxState = waitForFirstStart;
+     break;
+diff --git a/src/hal/src/sensors_bmi088_bmp388.c b/src/hal/src/sensors_bmi088_bmp388.c
+index 9f1d3a30..f5c8c6f2 100644
+--- a/src/hal/src/sensors_bmi088_bmp388.c
++++ b/src/hal/src/sensors_bmi088_bmp388.c
+@@ -87,7 +87,11 @@
+ #define GYRO_VARIANCE_THRESHOLD_Y       (GYRO_VARIANCE_BASE)
+ #define GYRO_VARIANCE_THRESHOLD_Z       (GYRO_VARIANCE_BASE)
+ 
++#ifdef SOFTWARE_IN_THE_LOOP
++#define SENSORS_ACC_SCALE_SAMPLES  2
++#else
+ #define SENSORS_ACC_SCALE_SAMPLES  200
++#endif //SOFTWARE_IN_THE_LOOP
+ 
+ typedef struct
+ {
+@@ -123,7 +127,11 @@ static sensorData_t sensorData;
+ static volatile uint64_t imuIntTimestamp;
+ 
+ static Axis3i16 gyroRaw;
++#ifndef HARDWARE_IN_THE_LOOP
+ static Axis3i16 accelRaw;
++#else
++static Axis3i16 accelRaw __attribute__((used)) = { .x=0, .y=0, .z=1365};
++#endif
+ NO_DMA_CCM_SAFE_ZERO_INIT static BiasObj gyroBiasRunning;
+ static Axis3f gyroBias;
+ #if defined(SENSORS_GYRO_BIAS_CALCULATE_STDDEV) && defined (GYRO_BIAS_LIGHT_WEIGHT)
+@@ -158,7 +166,9 @@ static bool processGyroBias(int16_t gx, int16_t gy, int16_t gz,  Axis3f *gyroBia
+ #endif
+ static bool processAccScale(int16_t ax, int16_t ay, int16_t az);
+ static void sensorsBiasObjInit(BiasObj* bias);
++#ifndef SOFTWARE_IN_THE_LOOP
+ static void sensorsCalculateVarianceAndMean(BiasObj* bias, Axis3f* varOut, Axis3f* meanOut);
++#endif
+ static void sensorsCalculateBiasMean(BiasObj* bias, Axis3i32* meanOut);
+ static void sensorsAddBiasValue(BiasObj* bias, int16_t x, int16_t y, int16_t z);
+ static bool sensorsFindBiasValue(BiasObj* bias);
+@@ -226,10 +236,12 @@ static uint16_t sensorsGyroGet(Axis3i16* dataOut)
+   return bmi088_get_gyro_data((struct bmi088_sensor_data*)dataOut, &bmi088Dev);
+ }
+ 
++#ifndef HARDWARE_IN_THE_LOOP
+ static void sensorsAccelGet(Axis3i16* dataOut)
+ {
+   bmi088_get_accel_data((struct bmi088_sensor_data*)dataOut, &bmi088Dev);
+ }
++#endif // HARDWARE_IN_THE_LOOP
+ 
+ static void sensorsScaleBaro(baro_t* baroScaled, float pressure,
+                              float temperature)
+@@ -284,15 +296,26 @@ static void sensorsTask(void *param)
+    * this is only required by the z-ranger, since the
+    * configuration will be done after system start-up */
+   //vTaskDelayUntil(&lastWakeTime, M2T(1500));
++
++#ifdef HARDWARE_IN_THE_LOOP // used osTick timing in hitl set-up
++  TickType_t lastWakeTime = xTaskGetTickCount();
++#endif // HARDWARE_IN_THE_LOOP
++
+   while (1)
+   {
++#ifdef HARDWARE_IN_THE_LOOP // used osTick timing in hitl set-up
++    vTaskDelayUntil(&lastWakeTime, M2T(1));
++#else // normal firmware
+     if (pdTRUE == xSemaphoreTake(sensorsDataReady, portMAX_DELAY))
++#endif // HARDWARE_IN_THE_LOOP
+     {
+       sensorData.interruptTimestamp = imuIntTimestamp;
+ 
++#ifndef HARDWARE_IN_THE_LOOP
+       /* get data from chosen sensors */
+       sensorsGyroGet(&gyroRaw);
+       sensorsAccelGet(&accelRaw);
++#endif
+ 
+       /* calibrate if necessary */
+ #ifdef GYRO_BIAS_LIGHT_WEIGHT
+@@ -363,6 +386,7 @@ void sensorsBmi088Bmp388WaitDataReady(void)
+ 
+ static void sensorsDeviceInit(void)
+ {
++
+   if (isInit)
+     return;
+ 
+@@ -591,7 +615,9 @@ void sensorsBmi088Bmp388Init_I2C(void)
+ static bool gyroSelftest()
+ {
+   bool testStatus = true;
+-
++#ifdef HARDWARE_IN_THE_LOOP
++  return testStatus;
++#endif /*HARDWARE_IN_THE_LOOP*/
+   int i = 3;
+   uint16_t readResult = BMI088_OK;
+   do {
+@@ -741,6 +767,7 @@ static void sensorsBiasObjInit(BiasObj* bias)
+ /**
+  * Calculates the variance and mean for the bias buffer.
+  */
++#ifndef SOFTWARE_IN_THE_LOOP
+ static void sensorsCalculateVarianceAndMean(BiasObj* bias, Axis3f* varOut, Axis3f* meanOut)
+ {
+   uint32_t i;
+@@ -765,6 +792,7 @@ static void sensorsCalculateVarianceAndMean(BiasObj* bias, Axis3f* varOut, Axis3
+   meanOut->y = (float)sum[1] / SENSORS_NBR_OF_BIAS_SAMPLES;
+   meanOut->z = (float)sum[2] / SENSORS_NBR_OF_BIAS_SAMPLES;
+ }
++#endif
+ 
+ /**
+  * Calculates the mean for the bias buffer.
+@@ -811,6 +839,10 @@ static void sensorsAddBiasValue(BiasObj* bias, int16_t x, int16_t y, int16_t z)
+  */
+ static bool sensorsFindBiasValue(BiasObj* bias)
+ {
++#ifdef SOFTWARE_IN_THE_LOOP
++  bias->isBiasValueFound = true;
++  return true;
++#else
+   static int32_t varianceSampleTime;
+   bool foundBias = false;
+ 
+@@ -833,6 +865,7 @@ static bool sensorsFindBiasValue(BiasObj* bias)
+   }
+ 
+   return foundBias;
++#endif
+ }
+ 
+ bool sensorsBmi088Bmp388ManufacturingTest(void)
+diff --git a/src/modules/src/kalman_core/kalman_core.c b/src/modules/src/kalman_core/kalman_core.c
+index 5e92ba76..d04c3dc1 100644
+--- a/src/modules/src/kalman_core/kalman_core.c
++++ b/src/modules/src/kalman_core/kalman_core.c
+@@ -39,7 +39,6 @@
+       pages   = {1730-1736},
+       doi     = {10.1109/ICRA.2015.7139421},
+       ISSN    = {1050-4729}}
+-
+       @ARTICLE{MuellerCovariance2016,
+       author={Mueller, Mark W and Hehn, Markus and D’Andrea, Raffaello},
+       title={Covariance Correction Step for Kalman Filtering with an Attitude},
+@@ -532,9 +531,22 @@ void kalmanCorePredict(kalmanCoreData_t* this, Axis3f *acc, Axis3f *gyro, float
+ 
+   // compute the quaternion values in [w,x,y,z] order
+   float angle = arm_sqrt(dtwx*dtwx + dtwy*dtwy + dtwz*dtwz);
++#if defined(SOFTWARE_IN_THE_LOOP) || defined(HARDWARE_IN_THE_LOOP)
++  // this is actually a bug and should be pushed to bitcraze repo
++  float dq[4] = {1,0,0,0};
++  if (angle!=0){
++    float ca = arm_cos_f32(angle / 2.0f);
++    float sa = arm_sin_f32(angle / 2.0f);
++    dq[0] = ca;
++    dq[1] = sa*dtwx/angle;
++    dq[2] = sa*dtwy/angle;
++    dq[3] = sa*dtwz/angle;
++  }
++#else // normal firmware
+   float ca = arm_cos_f32(angle/2.0f);
+   float sa = arm_sin_f32(angle/2.0f);
+   float dq[4] = {ca , sa*dtwx/angle , sa*dtwy/angle , sa*dtwz/angle};
++#endif /*SOFTWARE_IN_THE_LOOP or HARDWARE_IN_THE_LOOP*/
+ 
+   float tmpq0;
+   float tmpq1;
+@@ -620,9 +632,22 @@ void kalmanCoreFinalize(kalmanCoreData_t* this, uint32_t tick)
+   if ((fabsf(v0) > 0.1e-3f || fabsf(v1) > 0.1e-3f || fabsf(v2) > 0.1e-3f) && (fabsf(v0) < 10 && fabsf(v1) < 10 && fabsf(v2) < 10))
+   {
+     float angle = arm_sqrt(v0*v0 + v1*v1 + v2*v2);
++#if defined(SOFTWARE_IN_THE_LOOP) || defined(HARDWARE_IN_THE_LOOP)
++    // this is actually a bug and should be pushed to bitcraze repo
++    float dq[4] = {1,0,0,0};
++    if (angle!=0){
++      float ca = arm_cos_f32(angle / 2.0f);
++      float sa = arm_sin_f32(angle / 2.0f);
++      dq[0] = ca;
++      dq[1] = sa*v0/angle;
++      dq[2] = sa*v1/angle;
++      dq[3] = sa*v2/angle;
++    }
++#else // normal firmware
+     float ca = arm_cos_f32(angle / 2.0f);
+     float sa = arm_sin_f32(angle / 2.0f);
+-    float dq[4] = {ca, sa * v0 / angle, sa * v1 / angle, sa * v2 / angle};
++    float dq[4] = {ca, sa*v0/angle, sa*v1/angle, sa*v2/angle};
++#endif /*SOFTWARE_IN_THE_LOOP or HARDWARE_IN_THE_LOOP*/
+ 
+     // rotate the quad's attitude by the delta quaternion vector computed above
+     float tmpq0 = dq[0] * this->q[0] - dq[1] * this->q[1] - dq[2] * this->q[2] - dq[3] * this->q[3];
+diff --git a/src/modules/src/kalman_core/mm_flow.c b/src/modules/src/kalman_core/mm_flow.c
+index fb692d21..8ef26656 100644
+--- a/src/modules/src/kalman_core/mm_flow.c
++++ b/src/modules/src/kalman_core/mm_flow.c
+@@ -25,12 +25,17 @@
+ 
+ #include "mm_flow.h"
+ #include "log.h"
++#include "config.h"
+ 
+ // TODO remove the temporary test variables (used for logging)
+ static float predictedNX;
+ static float predictedNY;
+ static float measuredNX;
+ static float measuredNY;
++#if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
++static int16_t error_flowx __attribute__((used));
++static int16_t error_flowy __attribute__((used));
++#endif /* HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP */
+ 
+ void kalmanCoreUpdateWithFlow(kalmanCoreData_t* this, const flowMeasurement_t *flow, const Axis3f *gyro)
+ {
+@@ -83,6 +88,9 @@ void kalmanCoreUpdateWithFlow(kalmanCoreData_t* this, const flowMeasurement_t *f
+   hx[KC_STATE_PX] = (Npix * flow->dt / thetapix) * (this->R[2][2] / z_g);
+ 
+   //First update
++#if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
++  error_flowx = (int16_t)((measuredNX-predictedNX)*1000);
++#endif /* HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP */
+   kalmanCoreScalarUpdate(this, &Hx, measuredNX-predictedNX, flow->stdDevX);
+ 
+   // ~~~ Y velocity prediction and update ~~~
+@@ -96,6 +104,10 @@ void kalmanCoreUpdateWithFlow(kalmanCoreData_t* this, const flowMeasurement_t *f
+   hy[KC_STATE_PY] = (Npix * flow->dt / thetapix) * (this->R[2][2] / z_g);
+ 
+   // Second update
++#if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
++  error_flowy = (int16_t)((measuredNY-predictedNY)*1000);
++#endif /* HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP */
++
+   kalmanCoreScalarUpdate(this, &Hy, measuredNY-predictedNY, flow->stdDevY);
+ }
+ 
+diff --git a/src/modules/src/kalman_core/mm_tof.c b/src/modules/src/kalman_core/mm_tof.c
+index 9d4b4928..c4626fff 100644
+--- a/src/modules/src/kalman_core/mm_tof.c
++++ b/src/modules/src/kalman_core/mm_tof.c
+@@ -24,6 +24,11 @@
+  */
+ 
+ #include "mm_tof.h"
++#include "config.h"
++
++#if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
++static int16_t error_tof __attribute__((used));
++#endif /* HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP */
+ 
+ void kalmanCoreUpdateWithTof(kalmanCoreData_t* this, tofMeasurement_t *tof)
+ {
+@@ -48,6 +53,9 @@ void kalmanCoreUpdateWithTof(kalmanCoreData_t* this, tofMeasurement_t *tof)
+     //h[KC_STATE_Z] = 1 / cosf(angle);
+ 
+     // Scalar update
++#if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
++    error_tof = (int16_t)((measuredDistance-predictedDistance)*1000);
++#endif /* HARDWARE_IN_THE_LOOP or SOFTWARE_IN_THE_LOOP */
+     kalmanCoreScalarUpdate(this, &H, measuredDistance-predictedDistance, tof->stdDev);
+   }
+ }
+diff --git a/src/modules/src/log.c b/src/modules/src/log.c
+index c8c657f1..f5cc743c 100644
+--- a/src/modules/src/log.c
++++ b/src/modules/src/log.c
+@@ -994,7 +994,7 @@ logVarId_t logGetVarId(char* group, char* name)
+ 
+ int logGetType(logVarId_t varid)
+ {
+-  return logs[varid].type;
++  return logs[varid].type & TYPE_MASK; // Fixed in a later version of the real firmware too
+ }
+ 
+ void logGetGroupAndName(logVarId_t varid, char** group, char** name)
+diff --git a/src/modules/src/stabilizer.c b/src/modules/src/stabilizer.c
+index 060da59f..169bee72 100644
+--- a/src/modules/src/stabilizer.c
++++ b/src/modules/src/stabilizer.c
+@@ -55,6 +55,12 @@
+ #include "static_mem.h"
+ #include "rateSupervisor.h"
+ 
++#ifdef PROCESS_IN_THE_LOOP
++#include "eventtrigger.h"
++EVENTTRIGGER(stabilizerLoopA)
++EVENTTRIGGER(stabilizerLoopB)
++#endif /*PROCESS_IN_THE_LOOP*/
++
+ static bool isInit;
+ static bool emergencyStop = false;
+ static int emergencyStopTimeout = EMERGENCY_STOP_TIMEOUT_DISABLED;
+@@ -233,6 +239,10 @@ static void stabilizerTask(void* param)
+   DEBUG_PRINT("Ready to fly.\n");
+ 
+   while(1) {
++#ifdef PROCESS_IN_THE_LOOP
++    eventTrigger(&eventTrigger_stabilizerLoopA);
++    eventTrigger(&eventTrigger_stabilizerLoopB);
++#endif /*PROCESS_IN_THE_LOOP*/
+     // The sensor should unlock at 1kHz
+     sensorsWaitDataReady();
+ 

@@ -1,0 +1,31 @@
+1	# version
+4096	# buffer size in bytes
+pitl	# file name
+1	# enable on startup
+on:fixedFrequency
+1
+0
+on:stabilizerLoopA
+motor.m1
+motor.m2
+motor.m3
+motor.m4
+acc.x
+acc.y
+acc.z
+gyro.x
+gyro.y
+gyro.z
+zranger.zrange
+motion.deltaX
+motion.deltaY
+on:stabilizerLoopB
+stateEstimateZ.x
+stateEstimateZ.y
+stateEstimateZ.z
+stateEstimateZ.vx
+stateEstimateZ.vy
+stateEstimateZ.vz
+ctrltargetZ.x
+ctrltargetZ.y
+ctrltargetZ.z

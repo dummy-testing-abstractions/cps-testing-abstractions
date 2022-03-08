@@ -1,0 +1,38 @@
+// External peripherals used for the Bitcraze Crazyflie 2.1
+
+using "platforms/cpus/stm32f405.repl"
+
+gpioPortC:
+    0 -> ledRL@0
+    1 -> ledGL@0
+    2 -> ledGR@0
+    3 -> ledRR@0
+
+gpioPortD:
+    2 -> ledB@0
+
+ledB: Miscellaneous.LED @ gpioPortD
+
+ledRL: Miscellaneous.LED @ gpioPortC
+    invert: true
+
+ledGL: Miscellaneous.LED @ gpioPortC
+    invert: true
+
+ledGR: Miscellaneous.LED @ gpioPortC
+    invert: true
+
+ledRR: Miscellaneous.LED @ gpioPortC
+    invert: true
+
+eeprom: Miscellaneous.EEPROM_24AA64 @ i2c1 0x50
+
+nrf: Miscellaneous.CF_Syslink @ sysbus <0x40005000, +0x400>
+    deck: 1
+
+bmi_gyro: Sensors.BMI088_Gyroscope @ i2c3 0x69
+    Int3 -> exti@14
+
+bmi_accel: Sensors.BMI088_Accelerometer @ i2c3 0x18
+
+bmp_baro: Sensors.BMP388 @ i2c3 0x77

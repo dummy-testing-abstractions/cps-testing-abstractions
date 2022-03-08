@@ -1,0 +1,16 @@
+sensorsTask        sensors_bmi088_bmp388
+motor_ratios       motors
+accelRaw           sensors_bmi088_bmp388
+gyroRaw            sensors_bmi088_bmp388
+range_last         zranger2
+currentMotion      flowdeck_v1v2
+start              steps
+ready              steps
+gyroBiasFound      sensors_bmi088_bmp388
+stateCompressed    stabilizer
+setpointCompressed stabilizer
+xTickCount         tasks
+error_flowx        mm_flow
+error_flowy        mm_flow
+error_tof          mm_tof
+state              stabilizer

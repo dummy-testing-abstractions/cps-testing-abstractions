@@ -1,0 +1,19 @@
+diff --git a/src/drivers/bosch/src/bmi088_gyro.c b/src/drivers/bosch/src/bmi088_gyro.c
+index b47e4ddb..8f8139d6 100644
+--- a/src/drivers/bosch/src/bmi088_gyro.c
++++ b/src/drivers/bosch/src/bmi088_gyro.c
+@@ -435,12 +435,12 @@ uint16_t bmi088_get_gyro_data(struct bmi088_sensor_data *gyro, struct bmi088_dev
+             lsb = (uint32_t)data[index++];
+             msb = (uint32_t)data[index++];
+             msblsb = (msb << BMI088_EIGHT) | lsb;
+-            gyro->x = (int16_t)msblsb; /* Data in X axis */
++            gyro->y = (int16_t)msblsb; /* Data in Y axis */
+ 
+             lsb = (uint32_t)data[index++];
+             msb = (uint32_t)data[index++];
+             msblsb = (msb << BMI088_EIGHT) | lsb;
+-            gyro->y = (int16_t)msblsb; /* Data in Y axis */
++            gyro->x = (int16_t)msblsb; /* Data in X axis */
+ 
+             lsb = (uint32_t)data[index++];
+             msb = (uint32_t)data[index++];

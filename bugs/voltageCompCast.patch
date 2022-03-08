@@ -1,0 +1,22 @@
+diff --git a/src/drivers/src/motors.c b/src/drivers/src/motors.c
+index b425bb4f..bef80dd1 100644
+--- a/src/drivers/src/motors.c
++++ b/src/drivers/src/motors.c
+@@ -135,7 +135,7 @@ static uint16_t motorsCompensateBatteryVoltage(uint16_t ithrust)
+   float supply_voltage = pmGetBatteryVoltage();
+   float percentage = volts / supply_voltage;
+   percentage = percentage > 1.0f ? 1.0f : percentage;
+-  return percentage * UINT16_MAX;
++  return (uint16_t) percentage * UINT16_MAX;
+ }
+ 
+ /* Public functions */
+@@ -281,7 +281,7 @@ void motorsSetRatio(uint32_t id, uint16_t ithrust)
+ 
+     ASSERT(id < NBR_OF_MOTORS);
+ 
+-    ratio = ithrust;
++    ratio = motorsCompensateBatteryVoltage(ithrust);
+ 
+ #if defined(HARDWARE_IN_THE_LOOP) || defined(SOFTWARE_IN_THE_LOOP)
+     motor_ratios[id] = ratio;
