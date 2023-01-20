@@ -1,6 +1,6 @@
 # Testing Abstractions for Testing of Embedded Control Software
 
-Repository associated to the paper _Testing Abstractions for Cyber-Physical Control Systems_ submitted to FSE 2022.
+Repository associated to the paper _Testing Abstractions for Cyber-Physical Control Systems_.
 The paper discusses the capacity of different testing setups to show faults in control software.
 It contains an experimental campaign based on the [Crazyflie 2.1](https://store.bitcraze.io/products/crazyflie-2-1).
 In this repository you will find all the code used in the paper experiments and the instructions to reproduce the tests.
